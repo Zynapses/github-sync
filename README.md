@@ -1,145 +1,124 @@
 # github-sync
 
-Keep all your GitHub repos in sync across multiple computers. Automatically clones new repos, pulls updates, pushes local commits, and ensures consistent git configuration.
+Keep all your GitHub repos in sync across multiple computers automatically. One command sets up everything — clones new repos, pulls updates, pushes local commits, and runs in the background.
 
-## Quick Start (One Command)
+---
 
-On any new machine, open a terminal and run:
+## Quick Start
+
+### Prerequisites
+
+The setup script installs these automatically, but if you want to do it yourself:
+
+| Component | What it is | macOS | Ubuntu/Debian | Fedora |
+|-----------|-----------|-------|---------------|--------|
+| **git** | Version control | Pre-installed | `sudo apt install git` | `sudo dnf install git` |
+| **gh** | GitHub CLI — authenticates and talks to GitHub | `brew install gh` | `sudo apt install gh` | `sudo dnf install gh` |
+| **jq** | JSON processor — parses GitHub API responses | `brew install jq` | `sudo apt install jq` | `sudo dnf install jq` |
+| **Homebrew** | Package manager (macOS only) | [brew.sh](https://brew.sh) | n/a | n/a |
+
+> **Note:** `gh` must be authenticated. If you're using Windsurf or Kiro, this is already done for you. Otherwise run `gh auth login` first.
+
+### Install (one command)
+
+Open a terminal on any machine and run:
 
 ```bash
 /bin/bash -c "$(curl -sL https://raw.githubusercontent.com/Zynapses/github-sync/main/setup.sh)"
 ```
 
-That's it. One command. It handles **everything**:
-1. Installs Homebrew (macOS) or configures apt/dnf (Linux)
-2. Installs `git`, `gh`, and `jq` if missing
-3. Sets up git identity if not configured
-4. Verifies GitHub authentication (already handled by Windsurf/Kiro)
-5. Installs `github-sync` to `~/.local/bin`
-6. Writes config, sets up background sync (every 5 min)
-7. Clones all your repos and runs the first sync
+### What that command does
 
-## How It Works
+1. **Installs Homebrew** if on macOS and not already installed
+2. **Installs git, gh, and jq** if any are missing
+3. **Configures git identity** (`user.name` and `user.email`) if not already set
+4. **Verifies GitHub authentication** via `gh auth status`
+5. **Installs `github-sync`** to `~/.local/bin` (adds to PATH if needed)
+6. **Writes config** to `~/.config/github-sync/config`
+7. **Starts a background service** that syncs every 5 minutes:
+   - **macOS** → launchd agent (runs at login)
+   - **Linux** → systemd timer
+8. **Runs the first sync** — clones all your GitHub repos to `~/Projects`
 
-Every time `github-sync` runs, it:
+After that, every 5 minutes in the background it will:
+- Pull new changes from GitHub on all repos
+- Push any local commits you've made
+- Clone any new repos you've created from another machine
 
-1. **Queries GitHub** for all your repositories (via `gh` CLI)
-2. **Clones** any repo not yet on this machine
-3. **Configures** `user.name` and `user.email` on every repo
-4. **Pulls** the latest changes (rebase, auto-stashes dirty trees)
-5. **Pushes** any unpushed local commits
+### What gets installed where
 
-## Installation
+| What | Location |
+|------|----------|
+| Sync script | `~/.local/bin/github-sync` |
+| Config file | `~/.config/github-sync/config` |
+| Sync log | `~/.local/share/github-sync/sync.log` |
+| Service log (stdout) | `~/.local/share/github-sync/launchd-stdout.log` |
+| Service log (stderr) | `~/.local/share/github-sync/launchd-stderr.log` |
+| Background service (macOS) | `~/Library/LaunchAgents/com.github-sync.agent.plist` |
+| Background service (Linux) | `~/.config/systemd/user/github-sync.service` and `.timer` |
+| Your repos | `~/Projects/<repo-name>/` |
 
-### Prerequisites
-
-| Tool | Install |
-|------|---------|
-| [git](https://git-scm.com) | Pre-installed on most systems |
-| [gh](https://cli.github.com) | `brew install gh` / `sudo apt install gh` |
-| [jq](https://jqlang.github.io/jq/) | `brew install jq` / `sudo apt install jq` |
-
-### Install
-
-```bash
-./install.sh                     # Installs to /usr/local/bin
-PREFIX=~/.local ./install.sh     # Or install to ~/.local/bin
-```
-
-### Uninstall
-
-```bash
-./install.sh --uninstall
-```
-
-## Setup (Per Computer)
-
-Run the interactive setup on each machine:
-
-```bash
-github-sync --setup
-```
-
-This will:
-- Verify prerequisites are installed
-- Check GitHub authentication
-- Ask for your git identity, projects directory, and preferences
-- Save config to `~/.config/github-sync/config`
-- Optionally install as a **background service** (launchd on macOS, systemd on Linux)
+---
 
 ## Usage
 
+After install, you can run these anytime:
+
 ```bash
-github-sync                  # Sync once
-github-sync --dry-run        # Preview without changes
-github-sync --verbose        # Detailed output
-github-sync --loop 300       # Continuous sync every 5 minutes
-github-sync --status         # Show status of all local repos
-github-sync --dir ~/Code     # Override projects directory
-github-sync --setup          # Re-run setup
-github-sync --help           # Show help
+github-sync                  # Sync all repos right now
+github-sync --status         # Show status of every local repo
+github-sync --dry-run        # Preview what would happen (no changes)
+github-sync --verbose        # Sync with detailed output
+github-sync --help           # Show all options
 ```
 
-## Configuration
+---
 
-Config is stored at `~/.config/github-sync/config` and is generated by `--setup`. You can also edit it directly:
+## Uninstall
 
+To completely remove github-sync from a machine:
+
+### 1. Stop and remove the background service
+
+**macOS:**
 ```bash
-# ~/.config/github-sync/config
-GITHUB_SYNC_DIR="$HOME/Projects"
-GITHUB_SYNC_GIT_NAME="Zynapses"
-GITHUB_SYNC_GIT_EMAIL="bob.long@zynapses.ai"
-GITHUB_SYNC_PROTOCOL="https"       # or "ssh"
-GITHUB_SYNC_FORKS="false"          # include forked repos
-GITHUB_SYNC_ARCHIVED="false"       # include archived repos
-```
-
-Environment variables override the config file.
-
-## Background Service
-
-### macOS (launchd)
-
-Offered during `--setup`, or install manually:
-
-```bash
-# The setup wizard handles this, but to manage it:
-launchctl load   ~/Library/LaunchAgents/com.github-sync.agent.plist
 launchctl unload ~/Library/LaunchAgents/com.github-sync.agent.plist
+rm ~/Library/LaunchAgents/com.github-sync.agent.plist
 ```
 
-### Linux (systemd)
+**Linux:**
+```bash
+systemctl --user stop github-sync.timer
+systemctl --user disable github-sync.timer
+rm ~/.config/systemd/user/github-sync.service
+rm ~/.config/systemd/user/github-sync.timer
+systemctl --user daemon-reload
+```
+
+### 2. Remove the script
 
 ```bash
-# Managed via:
-systemctl --user status  github-sync.timer
-systemctl --user stop    github-sync.timer
-systemctl --user disable github-sync.timer
+rm ~/.local/bin/github-sync
 ```
 
-## Multi-Computer Workflow
+### 3. Remove config and logs
 
-1. **Install on each machine** — clone this repo and run `./install.sh`
-2. **Run setup on each** — `github-sync --setup` (same GitHub account, same git identity)
-3. **Enable background service** — say yes during setup, or use `--loop`
-4. **Work normally** — commit and save your work; the sync handles the rest
+```bash
+rm -rf ~/.config/github-sync
+rm -rf ~/.local/share/github-sync
+```
 
-Each machine will automatically:
-- Pick up new repos you create from any computer
-- Pull changes pushed from other machines
-- Push your local commits
+Your repos in `~/Projects/` are **not touched** — they're normal git repos you can keep using.
 
-### Conflict Handling
+---
 
-- **Dirty working tree**: Auto-stashed before pull, restored after
-- **Rebase conflicts**: Automatically aborted (your local state is preserved)
-- **Stash conflicts**: Changes remain in stash for manual resolution
+## Conflict Handling
 
-## Logs
+- **Dirty working tree** — Auto-stashed before pull, restored after
+- **Rebase conflicts** — Automatically aborted (your local state is preserved)
+- **Stash conflicts** — Changes remain in stash for you to resolve manually
 
-- **Sync log**: `~/.local/share/github-sync/sync.log`
-- **launchd stdout**: `~/.local/share/github-sync/launchd-stdout.log`
-- **launchd stderr**: `~/.local/share/github-sync/launchd-stderr.log`
+---
 
 ## License
 
